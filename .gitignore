@@ -8,6 +8,7 @@ __pycache__/
 Thumbs.db
 */data/errors.json
 moving_obstacle/reproduced/
+moving_obstacle/trained/
 moving_obstacle/generated_reference/
 air3d/reproduced/
 air3d/trained/

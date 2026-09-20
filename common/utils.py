@@ -44,7 +44,7 @@ def simulate_trajectory_from_params(
     T : float
         Total simulation time.
     dt : float
-        Time step.
+        Maximum time step.
     seed : int
         Random seed.
 
@@ -55,8 +55,13 @@ def simulate_trajectory_from_params(
     traj : jnp.ndarray
         Simulated trajectory.
     """
-    num_steps = int(T / dt)
-    ts = jnp.linspace(0.0, T, num_steps)
+    if not np.isfinite(T) or T < 0:
+        raise ValueError("T must be finite and nonnegative")
+    if not np.isfinite(dt) or dt <= 0:
+        raise ValueError("dt must be finite and positive")
+    num_steps = int(np.ceil(T / dt))
+    step_dt = T / num_steps if num_steps else 0.0
+    ts = jnp.linspace(0.0, T, num_steps + 1)
     traj = [np.array(x0).reshape(-1)]
     key = random.PRNGKey(seed)
 
@@ -69,13 +74,13 @@ def simulate_trajectory_from_params(
         return alpha, beta
 
     x = np.array(x0)
-    for i in range(num_steps - 1):
+    for i in range(num_steps):
         t = float(ts[i])
         key, subkey = random.split(key)
-        dBt = random.normal(subkey, shape=(2,)) * np.sqrt(dt)
+        dBt = random.normal(subkey, shape=(2,)) * np.sqrt(step_dt)
 
         alpha, beta = get_policy(t, x)
-        dx = (alpha + beta) * dt + sigma @ dBt
+        dx = (alpha + beta) * step_dt + sigma @ dBt
         x = x + dx
         traj.append(x)
 
@@ -476,4 +481,3 @@ def compute_error_metrics(v_pinn, v_fdm):
         'Relative L2': float(rel_l2),
         'Max Error': float(max_abs)
     }
-

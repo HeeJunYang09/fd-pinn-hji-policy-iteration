@@ -93,6 +93,11 @@ python moving_obstacle/fdm_reference.py --sigma 0.1 0
 python moving_obstacle/fdm_reference.py --sigma 0 0.1
 ```
 
+Training writes to `moving_obstacle/trained/`; reference generation writes to
+`moving_obstacle/generated_reference/`. Both accept `--output-dir PATH`.
+Generated reference filenames include the grid size, for example
+`fdm_reference_sigma_00_00_nx800.npy`.
+
 ## Air3D
 
 Python 3.9, JAX 0.4.23, NumPy 1.26.4, Optax 0.2.2, and scikit-image 0.24.0.

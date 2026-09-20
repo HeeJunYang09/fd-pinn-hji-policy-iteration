@@ -7,6 +7,7 @@ GPU selection: set the HJ_GPU_ID environment variable (defaults to "0"), e.g.
 """
 
 #%%
+import argparse
 import os
 
 GPU_ID = os.environ.get("HJ_GPU_ID", "0")
@@ -232,13 +233,14 @@ def train_value_and_update_policy_with_sample(
         mse_history.append(mse)
         l2_history.append(l2_error)
 
+    refresh_interval = max(1, num_epochs // 10)
     for n in tqdm(range(num_iters), desc="Policy Iteration", position=0):
         params_current = params.copy()
         epoch_bar = tqdm(range(num_epochs), desc=f"Train (Iter {n})", leave=False)
         policy_fn = gen_policy_fn(params_current)
         iter_key = random.split(outer_key[1], 2)
         for epoch in epoch_bar:
-            if (epoch + 1) % (num_epochs // 10) == 0 or epoch < 1:
+            if (epoch + 1) % refresh_interval == 0 or epoch < 1:
                 iter_key = random.split(iter_key[1], 2)
                 keys = random.split(iter_key[0], 3)
                 data_tx, tau, h, nu_h = sample_grid_collocation(N, keys[0], minnum_h=minnum_h, maxnum_h=maxnum_h)
@@ -289,7 +291,7 @@ def load_paper_reference(sigma_text):
     return values[:, ::4, ::4]
 
 
-def run_one_sigma(sigma, sigma_text):
+def run_one_sigma(sigma, sigma_text, output_dir=None):
     minnum_h = maxnum_h = 800  # matches the paper run: min_nu = max_nu = 1.25*4/800 = 0.00625
 
     lambda_1, lambda_2, lambda_3 = 0.1, 1, 0.1
@@ -312,7 +314,7 @@ def run_one_sigma(sigma, sigma_text):
         v_fdm=v_fdm, minnum_h=minnum_h, maxnum_h=maxnum_h,
     )
 
-    out_dir = DATA_DIR
+    out_dir = Path(output_dir) if output_dir is not None else DATA_DIR.parent / "trained"
     out_dir.mkdir(parents=True, exist_ok=True)
     params_num = count_params(params)
     print(f"[{sigma_text}] N={N} iters={num_iters} epochs={num_epoch} params={params_num} min_nu={min_nu} max_nu={max_nu}")
@@ -387,10 +389,13 @@ def plot_checkpoint(params, v_fdm, v_single, output_path):
 
 #%%
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=DATA_DIR.parent / "trained")
+    args = parser.parse_args()
     # sigma_00_00 -> moving_obstacle_main.pdf
     # sigma_01_00 -> moving_obstacle_sigma_01_00.pdf
     # sigma_00_01 -> moving_obstacle_sigma_00_01.pdf
     sigma_list = [jnp.array([[0.0, 0.0], [0.0, 0.0]]), jnp.array([[0.1, 0.0], [0.0, 0.0]]), jnp.array([[0.0, 0.0], [0.0, 0.1]])]
     sigma_text_list = ["sigma_00_00", "sigma_01_00", "sigma_00_01"]
     for sigma, sigma_text in zip(sigma_list, sigma_text_list):
-        run_one_sigma(sigma, sigma_text)
+        run_one_sigma(sigma, sigma_text, output_dir=args.output_dir)

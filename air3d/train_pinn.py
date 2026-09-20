@@ -273,13 +273,14 @@ def train_value_and_update_policy_with_sample(
         mse_history.append(mse)
         l2_history.append(l2_error)
 
+    refresh_interval = max(1, num_epochs // 10)
     for n in tqdm(range(num_iters), desc="Policy Iteration", position=0):
         params_current = params.copy()
         epoch_bar = tqdm(range(num_epochs), desc=f"Train (Iter {n})", leave=False)
         policy_fn = gen_policy_fn(params_current, P["omega_bar"])
         iter_key = random.split(outer_key[1], 2)
         for epoch in epoch_bar:
-            if (epoch + 1) % (num_epochs // 10) == 0 or epoch < 1:
+            if (epoch + 1) % refresh_interval == 0 or epoch < 1:
                 iter_key = random.split(iter_key[1], 2)
                 keys = random.split(iter_key[0], 3)
                 data_tx, tau, h, h_psi, nu_h = sample_collocation(

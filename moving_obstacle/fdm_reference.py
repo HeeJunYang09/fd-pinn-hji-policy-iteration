@@ -177,7 +177,7 @@ def main():
     parser.add_argument("--nx", type=int, default=800, help="Spatial cells per axis on [-2,2].")
     parser.add_argument("--sigma", type=float, nargs=2, choices=(0.0, 0.1), default=(0.0, 0.0),
                         metavar=("SIGMA1", "SIGMA2"), help="Diagonal diffusion amplitudes.")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).parent / "data")
+    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent / "generated_reference")
     args = parser.parse_args()
     if args.nx < 4 or args.nx % 4:
         parser.error("nx must be a positive multiple of 4")
@@ -194,7 +194,7 @@ def main():
         raise SystemExit("FDM produced non-finite values")
     tag = "_".join("01" if value == 0.1 else "00" for value in args.sigma)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    path = args.output_dir / f"fdm_reference_sigma_{tag}.npy"
+    path = args.output_dir / f"fdm_reference_sigma_{tag}_nx{nx}.npy"
     np.save(path, crop)
     print(f"Saved {path}: shape={crop.shape}, nx={nx}, steps={100*nx}, nu={5/nx}")
 

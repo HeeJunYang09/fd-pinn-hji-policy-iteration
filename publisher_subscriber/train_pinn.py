@@ -275,11 +275,12 @@ def train_value_and_update_policy_with_sample(Ni, P, minnum_h=200, maxnum_h=2000
     if v_fdm is not None:
         track_error()
 
+    refresh_interval = max(1, num_epochs // 10)
     for n in tqdm(range(num_iters), desc="Policy Iteration", position=0):
         params_current = params.copy()
         epoch_bar = tqdm(range(num_epochs), desc=f"Train (Iter {n})", leave=False)
         for epoch in epoch_bar:
-            if (epoch + 1) % (num_epochs // 10) == 0 or epoch < 1:
+            if (epoch + 1) % refresh_interval == 0 or epoch < 1:
                 iter_key = random.split(iter_key[1], 2)
                 keys = random.split(iter_key[0], 3)
                 data_tx, tau, h, nu_h = sample_grid_collocation(Ni, keys[0], minnum_h=minnum_h, maxnum_h=maxnum_h, domain_t=P["domain_t"], domain_x=P["domain_x"], N=dim)
