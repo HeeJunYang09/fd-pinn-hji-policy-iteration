@@ -50,8 +50,10 @@ def _apply_bc3d(u, bc_flag):
         return uu
 
     u = lax.cond(bc_flag == 0, neumann, extrap, u)
-    u = u.at[:, :, 0].set(u[:, :, -2])
-    u = u.at[:, :, -1].set(u[:, :, 1])
+    # The physical grid includes both -pi and pi; synchronize the duplicate.
+    u = u.at[:, :, -2].set(u[:, :, 1])
+    u = u.at[:, :, 0].set(u[:, :, -3])
+    u = u.at[:, :, -1].set(u[:, :, 2])
     return u
 
 
@@ -71,9 +73,9 @@ def _step_one_air3d(v_prev, t, P):
     dv_dx3 = (v_prev[1:-1, 1:-1, 2:] - v_prev[1:-1, 1:-1, :-2]) / (2 * dz)
 
     H = (
-        dv_dx1 * (-ve + vp * jnp.cos(x3[1:-1, 1:-1, 1:-1]))
-        + dv_dx2 * (vp * jnp.sin(x3[1:-1, 1:-1, 1:-1]))
-        + obar * jnp.abs(dv_dx1 * x2[1:-1, 1:-1, 1:-1] - dv_dx2 * x1[1:-1, 1:-1, 1:-1] - dv_dx3)
+        dv_dx1 * (-ve + vp * jnp.cos(x3[None, None, 1:-1]))
+        + dv_dx2 * (vp * jnp.sin(x3[None, None, 1:-1]))
+        + obar * jnp.abs(dv_dx1 * x2[None, 1:-1, None] - dv_dx2 * x1[1:-1, None, None] - dv_dx3)
         - obar * jnp.abs(dv_dx3)
     )
 
@@ -104,6 +106,7 @@ def solve_air3d_fdm_explicit_jax_memlite(
     domain_psi=(-jnp.pi, jnp.pi), num_psi=65,
     bc="neumann",
     dtype=jnp.float64,
+    slice_only=False,
 ):
     # Building the default sigma at call time (not as a default-argument
     # value) avoids touching the JAX backend merely by importing this module.
@@ -123,7 +126,7 @@ def solve_air3d_fdm_explicit_jax_memlite(
     py = jnp.linspace(domain_y[0] - dy, domain_y[1] + dy, num_y + 2, dtype=dtype)
     pz = jnp.linspace(domain_psi[0] - dz, domain_psi[1] + dz, num_psi + 2, dtype=dtype)
 
-    X, Y, PSI = jnp.meshgrid(px, py, pz, indexing="ij")
+    X, Y, PSI = px, py, pz
 
     sigma = jnp.asarray(sigma, dtype=dtype)
     Sigma = sigma @ sigma.T + nu_h * jnp.eye(3, dtype=dtype)
@@ -132,7 +135,7 @@ def solve_air3d_fdm_explicit_jax_memlite(
     s33 = Sigma[2, 2]
 
     V_T = jnp.zeros((num_x + 2, num_y + 2, num_psi + 2), dtype=dtype)
-    term_xy = jnp.sqrt(X[1:-1, 1:-1, 1:-1] ** 2 + Y[1:-1, 1:-1, 1:-1] ** 2) - beta
+    term_xy = jnp.sqrt(X[1:-1, None, None] ** 2 + Y[None, 1:-1, None] ** 2) - beta
     V_T = V_T.at[1:-1, 1:-1, 1:-1].set(term_xy)
     bc_flag = 0 if bc == "neumann" else 1
     V_T = _apply_bc3d(V_T, bc_flag)
@@ -149,15 +152,22 @@ def solve_air3d_fdm_explicit_jax_memlite(
         s11=s11, s12=s12, s13=s13, s22=s22, s23=s23, s33=s33, bc_flag=bc_flag,
     )
 
+    def snapshot(v):
+        if slice_only:
+            q = (num_x - 1) // 4
+            psi_index = round(0.75 * (num_psi - 1)) + 1
+            return v[q+1:3*q+2, q+1:3*q+2, psi_index]
+        return v[1:-1, 1:-1, 1:-1]
+
     def run_loop(v0, t_seq, rev_idx, P):
-        snaps = jnp.zeros((4, num_x + 2, num_y + 2, num_psi + 2), dtype=dtype)
+        snaps = jnp.zeros((4, *snapshot(v0).shape), dtype=dtype)
 
         def body(i, state):
             v_prev, snaps = state
             v_next = _step_one_air3d(v_prev, t_seq[i], P)
 
             def write_if(snaps, j):
-                return lax.cond(i == rev_idx[j], lambda s: s.at[j].set(v_next), lambda s: s, snaps)
+                return lax.cond(i == rev_idx[j], lambda s: s.at[j].set(snapshot(v_next)), lambda s: s, snaps)
 
             for j in range(4):
                 snaps = write_if(snaps, j)
@@ -167,73 +177,37 @@ def solve_air3d_fdm_explicit_jax_memlite(
         return snaps, v_last
 
     snaps, V0 = run_loop(V_T, t_seq, rev_idx, P)
-    V_out = jnp.concatenate([snaps[:, 1:-1, 1:-1, 1:-1], V_T[jnp.newaxis, 1:-1, 1:-1, 1:-1]], axis=0)
+    V_out = jnp.concatenate([snaps, snapshot(V_T)[None]], axis=0)
     return V_out
 
 
-#%%
-def generate_reference(sigma_vec, sigma_txt, beta=0.5, omega_bar=1.5, hh0=50, num_grids=5):
-    """Runs the solver at 5 successively-refined grid sizes (h = 50, 100, 200,
-    400, 800), saving each to data/fdm_reference_h{h}.npy."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    sigma_vec = jnp.asarray(sigma_vec, dtype=jnp.float64)
-    sigma_mat = jnp.diag(sigma_vec)
-    sumSigma = float(jnp.sum(sigma_vec**2))
-    maxSigma = float(jnp.max(sigma_vec**2)) if float(jnp.max(sigma_vec**2)) > 0 else None
-
-    hh = hh0
-    nu_hh = 5.5 * (6 / hh)
-    saved = []
-    for _ in range(num_grids):
-        h = 6 / hh
-        nu_h = nu_hh
-
-        tau2 = h**2 / (3 * nu_h + sumSigma)
-        tau4 = nu_h / 17424
-        candidates = [tau2, tau4]
-        if maxSigma is not None:
-            candidates.append(4 * h**2 / (3 * maxSigma))
-        tau = min(candidates)
-        tt = int(jnp.ceil(1 / tau))
-
-        num_x = hh + 1
-        num_t = tt + 1
-        psi_idx = round(0.75 * (num_x - 1))
-
-        V_out = solve_air3d_fdm_explicit_jax_memlite(
-            ve=0.5, vp=0.5, omega_bar=omega_bar, beta=beta,
-            sigma=sigma_mat, nu_h=nu_h,
-            domain_t=(0.0, 1.0), num_t=num_t,
-            domain_x=(-3, 3), num_x=num_x,
-            domain_y=(-3, 3), num_y=num_x,
-            domain_psi=(-jnp.pi, jnp.pi), num_psi=num_x,
-            bc="neumann", dtype=jnp.float64,
-        )
-
-        qua = num_x // 4
-        V_out = V_out[:, qua:3 * qua + 1, qua:3 * qua + 1, psi_idx]
-
-        # sigma_txt=="000_000_000" is the (only) case shipped in data/ and used
-        # by the paper figures, so it gets the plain name; other sigma values
-        # (ablations not used by any of the 13 figures) get a suffix.
-        suffix = "" if sigma_txt == "000_000_000" else f"_sigma_{sigma_txt}"
-        out_path = DATA_DIR / f"fdm_reference_h{hh}{suffix}.npy"
-        np.save(out_path, np.asarray(V_out))
-        saved.append(out_path)
-        print(f"saved: {out_path}")
-
-        hh *= 2
-        nu_hh /= 2
-    return saved
+def generate_reference(nx, sigma_vec, output_dir):
+    from settings import problem, data_suffix
+    P = problem(nx, sigma_vec)
+    nt = int(np.ceil(1 / P["tau_h"]))
+    values = solve_air3d_fdm_explicit_jax_memlite(
+        ve=.5, vp=.5, omega_bar=1.5, beta=.5,
+        sigma=P["sigma"], nu_h=P["nu_h"],
+        domain_t=(0., 1.), num_t=nt+1,
+        domain_x=(-3., 3.), num_x=nx+1,
+        domain_y=(-3., 3.), num_y=nx+1,
+        domain_psi=(-np.pi, np.pi), num_psi=nx+1,
+        dtype=jnp.float64, slice_only=True)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"fdm_reference_h{nx}{data_suffix(sigma_vec)}.npy"
+    values = np.asarray(values)
+    if not np.isfinite(values).all():
+        raise RuntimeError("Nonfinite FDM reference")
+    np.save(path, values)
+    print(f"saved: {path}")
+    return path
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--sigma", type=float, nargs=3, default=[0.0, 0.0, 0.0],
-                         help="Diagonal diffusion sigma_vec, e.g. --sigma 0.03 0.05 0.0")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nx", type=int, choices=[200, 400, 800], default=800)
+    parser.add_argument("--sigma", type=float, nargs=3, default=[0., 0., 0.])
+    parser.add_argument("--output-dir", type=Path, default=DATA_DIR.parent / "generated_reference")
     args = parser.parse_args()
-    sigma_txt = "_".join(f"{s:03.0f}" if s == 0 else f"{s:.2f}".replace("0.", "") for s in args.sigma)
-    # matches the two cases used in the paper: sigma_000_000_000 and sigma_003_005_000
-    sigma_txt = "000_000_000" if all(s == 0 for s in args.sigma) else "003_005_000"
-    generate_reference(args.sigma, sigma_txt)
+    generate_reference(args.nx, args.sigma, args.output_dir)

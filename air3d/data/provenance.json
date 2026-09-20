@@ -1,0 +1,443 @@
+{
+  "example": 2,
+  "model": {
+    "ve": 0.5,
+    "vp": 0.5,
+    "omega_bar": 1.5,
+    "beta": 0.5,
+    "diffusion_diagonals": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.03,
+        0.05,
+        0.0
+      ]
+    ]
+  },
+  "training": {
+    "network": [
+      4,
+      64,
+      64,
+      64,
+      64,
+      1
+    ],
+    "activation": "sine",
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "policy_updates": 500,
+    "epochs_per_update": 1000,
+    "interior_samples": 4000,
+    "periodic_boundary_pairs": 1000,
+    "periodic_weight": 100,
+    "seed": 0,
+    "spatial_domain": [
+      -3,
+      3
+    ],
+    "time_domain": [
+      0,
+      1
+    ],
+    "sampling": "continuous uniform",
+    "stencil_margins": [
+      "tau_h",
+      "h_x",
+      "h_x",
+      "h_psi"
+    ],
+    "collocation_refresh_epochs": [
+      0,
+      99,
+      199,
+      299,
+      399,
+      499,
+      599,
+      699,
+      799,
+      899,
+      999
+    ],
+    "dtype": "float32"
+  },
+  "evaluation": {
+    "times": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "table_time": 0.0,
+    "x3": "pi/2",
+    "spatial_domain": [
+      -1.5,
+      1.5
+    ],
+    "grid_shape": [
+      101,
+      101
+    ],
+    "meshgrid_indexing": "xy",
+    "reference_indexing": [
+      "time",
+      "x1",
+      "x2"
+    ],
+    "transpose_reference": true,
+    "relative_l2": "norm(prediction-reference)/(norm(reference)+1e-8)"
+  },
+  "figures": {
+    "nx": 800,
+    "seed": 0,
+    "angular_points": 101,
+    "angular_endpoint": false,
+    "pinn_panel_x3": "pi/2"
+  },
+  "cases": [
+    {
+      "nx": 200,
+      "seed": 0,
+      "sigma_diagonal": [
+        0,
+        0,
+        0
+      ],
+      "h_x": 0.03,
+      "h_psi": 0.031415926535897934,
+      "nu_h": 0.16499999999999998,
+      "tau_h": 9.469696969696968e-06,
+      "fdm_time_steps": 105601,
+      "expected_relative_l2": 0.005232211668044329,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 2.699033029784914e-05,
+          "Relative L2": 0.005232211668044329,
+          "Max Error": 0.049900829792022705
+        },
+        {
+          "time": 0.25,
+          "MSE": 1.2174106814200059e-05,
+          "Relative L2": 0.0037646787241101265,
+          "Max Error": 0.034793369472026825
+        },
+        {
+          "time": 0.5,
+          "MSE": 6.979113550187321e-06,
+          "Relative L2": 0.003060618182644248,
+          "Max Error": 0.021829908713698387
+        },
+        {
+          "time": 0.75,
+          "MSE": 3.9350870792986825e-06,
+          "Relative L2": 0.0024387275334447622,
+          "Max Error": 0.031024381518363953
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h200_seed0.pkl",
+        "sha256": "f9d93293640ccd89f78dfd66ea987b9696c51ea379032dda14747c1b6777e6cf"
+      },
+      "reference": {
+        "file": "fdm_reference_h200.npy",
+        "sha256": "ce99ef5cd980f3a6786c2c0ae5eb608bb33d1428aad2c442636b6efed896b6e8"
+      }
+    },
+    {
+      "nx": 200,
+      "seed": 0,
+      "sigma_diagonal": [
+        0.03,
+        0.05,
+        0
+      ],
+      "h_x": 0.03,
+      "h_psi": 0.031415926535897934,
+      "nu_h": 0.16499999999999998,
+      "tau_h": 9.469696969696968e-06,
+      "fdm_time_steps": 105601,
+      "expected_relative_l2": 0.006344367749989033,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 3.9736747567076236e-05,
+          "Relative L2": 0.006344367749989033,
+          "Max Error": 0.04701271653175354
+        },
+        {
+          "time": 0.25,
+          "MSE": 1.0766118066385388e-05,
+          "Relative L2": 0.003538534278050065,
+          "Max Error": 0.037671029567718506
+        },
+        {
+          "time": 0.5,
+          "MSE": 8.292501661344431e-06,
+          "Relative L2": 0.0033351045567542315,
+          "Max Error": 0.034435681998729706
+        },
+        {
+          "time": 0.75,
+          "MSE": 1.8536384231992997e-05,
+          "Relative L2": 0.005292112473398447,
+          "Max Error": 0.0902344286441803
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h200_sigma_003_005_000_seed0.pkl",
+        "sha256": "920b218827a2a0fb073cfd0e843377463ab2b4c1658dfa29502510b6d454c347"
+      },
+      "reference": {
+        "file": "fdm_reference_h200_sigma_003_005_000.npy",
+        "sha256": "9aac517e012445d31db626fc5eb7f746f207a2024f241b2c6da28c73aaf8ce78"
+      }
+    },
+    {
+      "nx": 400,
+      "seed": 0,
+      "sigma_diagonal": [
+        0,
+        0,
+        0
+      ],
+      "h_x": 0.015,
+      "h_psi": 0.015707963267948967,
+      "nu_h": 0.08249999999999999,
+      "tau_h": 4.734848484848484e-06,
+      "fdm_time_steps": 211201,
+      "expected_relative_l2": 0.005709707271307707,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 3.037985516129993e-05,
+          "Relative L2": 0.005709707271307707,
+          "Max Error": 0.037859901785850525
+        },
+        {
+          "time": 0.25,
+          "MSE": 1.3550047697208356e-05,
+          "Relative L2": 0.004059433005750179,
+          "Max Error": 0.0358666330575943
+        },
+        {
+          "time": 0.5,
+          "MSE": 1.0966504305542912e-05,
+          "Relative L2": 0.003894980764016509,
+          "Max Error": 0.04185523837804794
+        },
+        {
+          "time": 0.75,
+          "MSE": 7.042782272037584e-06,
+          "Relative L2": 0.0032873693853616714,
+          "Max Error": 0.05583104491233826
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h400_seed0.pkl",
+        "sha256": "ba58fe84b75f74207ad451ce52bb8c96b2b37c806d3d27065cde008fceb31866"
+      },
+      "reference": {
+        "file": "fdm_reference_h400.npy",
+        "sha256": "0145b25bf40fc0bbcfe00268b349dc4f07368b36f2b52a4ed7204a27d66b458e"
+      }
+    },
+    {
+      "nx": 400,
+      "seed": 0,
+      "sigma_diagonal": [
+        0.03,
+        0.05,
+        0
+      ],
+      "h_x": 0.015,
+      "h_psi": 0.015707963267948967,
+      "nu_h": 0.08249999999999999,
+      "tau_h": 4.734848484848484e-06,
+      "fdm_time_steps": 211201,
+      "expected_relative_l2": 0.009430613368749619,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 8.298225293401629e-05,
+          "Relative L2": 0.009430613368749619,
+          "Max Error": 0.05448943376541138
+        },
+        {
+          "time": 0.25,
+          "MSE": 4.5059045078232884e-05,
+          "Relative L2": 0.0073992060497403145,
+          "Max Error": 0.04527375102043152
+        },
+        {
+          "time": 0.5,
+          "MSE": 1.8781360267894343e-05,
+          "Relative L2": 0.005095682572573423,
+          "Max Error": 0.038877665996551514
+        },
+        {
+          "time": 0.75,
+          "MSE": 1.3368361578613985e-05,
+          "Relative L2": 0.004528450313955545,
+          "Max Error": 0.06198631227016449
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h400_sigma_003_005_000_seed0.pkl",
+        "sha256": "8332c56f9b775517c55b59992b99a5142ea048f6bf4e83c6de3ff35e75fe8812"
+      },
+      "reference": {
+        "file": "fdm_reference_h400_sigma_003_005_000.npy",
+        "sha256": "2942c52e756fbbf6d28ea164a2ef85d4bdd355a4bc88dba838e8a5f2968725d0"
+      }
+    },
+    {
+      "nx": 800,
+      "seed": 0,
+      "sigma_diagonal": [
+        0,
+        0,
+        0
+      ],
+      "h_x": 0.0075,
+      "h_psi": 0.007853981633974483,
+      "nu_h": 0.041249999999999995,
+      "tau_h": 2.367424242424242e-06,
+      "fdm_time_steps": 422401,
+      "expected_relative_l2": 0.00595061993226409,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 3.213041418348439e-05,
+          "Relative L2": 0.00595061993226409,
+          "Max Error": 0.05254411697387695
+        },
+        {
+          "time": 0.25,
+          "MSE": 1.1696733054122888e-05,
+          "Relative L2": 0.003810499096289277,
+          "Max Error": 0.04145307466387749
+        },
+        {
+          "time": 0.5,
+          "MSE": 6.754190962965367e-06,
+          "Relative L2": 0.00307854893617332,
+          "Max Error": 0.022351257503032684
+        },
+        {
+          "time": 0.75,
+          "MSE": 3.6056617318536155e-06,
+          "Relative L2": 0.002360700163990259,
+          "Max Error": 0.020917445421218872
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h800_seed0.pkl",
+        "sha256": "a3e83c7628e18d4d2822cd3c7c790413539055df9bd518bc264acff3014c9743"
+      },
+      "reference": {
+        "file": "fdm_reference_h800.npy",
+        "sha256": "7cfe02f0579d788b1fc4b2021de312159766aba650206b4874e2351a0c0888cc"
+      }
+    },
+    {
+      "nx": 800,
+      "seed": 0,
+      "sigma_diagonal": [
+        0.03,
+        0.05,
+        0
+      ],
+      "h_x": 0.0075,
+      "h_psi": 0.007853981633974483,
+      "nu_h": 0.041249999999999995,
+      "tau_h": 2.367424242424242e-06,
+      "fdm_time_steps": 422401,
+      "expected_relative_l2": 0.007581685204058886,
+      "expected_snapshots": [
+        {
+          "time": 0.0,
+          "MSE": 5.2221414080122486e-05,
+          "Relative L2": 0.007581685204058886,
+          "Max Error": 0.054036229848861694
+        },
+        {
+          "time": 0.25,
+          "MSE": 2.75293587037595e-05,
+          "Relative L2": 0.005843270570039749,
+          "Max Error": 0.051289163529872894
+        },
+        {
+          "time": 0.5,
+          "MSE": 9.119544301938731e-06,
+          "Relative L2": 0.0035761825274676085,
+          "Max Error": 0.041059739887714386
+        },
+        {
+          "time": 0.75,
+          "MSE": 3.4685726859606802e-06,
+          "Relative L2": 0.002315048361197114,
+          "Max Error": 0.03277319669723511
+        },
+        {
+          "time": 1.0,
+          "MSE": 6.252488049605497e-15,
+          "Relative L2": 1.0035986974799016e-07,
+          "Max Error": 3.5762786865234375e-07
+        }
+      ],
+      "checkpoint": {
+        "file": "trained_pinn_h800_sigma_003_005_000_seed0.pkl",
+        "sha256": "f356cf45805ee6911f8bf0c9ac564b1b89ba694f6d707173aaf40576774eb529"
+      },
+      "reference": {
+        "file": "fdm_reference_h800_sigma_003_005_000.npy",
+        "sha256": "14b5eb86b8ffddd06e724549028cf0ab16f2c318a63d8f43a79eebc215030f6f"
+      }
+    }
+  ],
+  "reference_solver": {
+    "dtype": "float64",
+    "physical_diffusion": "sigma @ sigma.T",
+    "artificial_diffusion": "nu_h * I",
+    "planar_boundary": "homogeneous Neumann",
+    "angular_boundary": "periodic with synchronized duplicate endpoint",
+    "stored_times": "floor(t * fdm_time_steps) / fdm_time_steps, t in evaluation.times"
+  }
+}

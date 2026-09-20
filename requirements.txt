@@ -1,9 +1,4 @@
-# Tested with: jax==0.4.8, jaxlib==0.4.7 (CUDA build recommended for training; CPU works for figure assembly)
-jax>=0.4.8
-jaxlib>=0.4.7
-optax>=0.1.4
-numpy>=1.26
-matplotlib>=3.8
-tqdm>=4.60
-scikit-image>=0.25   # air3d/make_figures.py (marching cubes for the 3D BRS tube)
-numba>=0.59           # publisher_subscriber/fdm_reference.py (CPU FD solver)
+# Python 3.9 dependencies for all three examples.
+-r moving_obstacle/requirements-py39.txt
+-r air3d/requirements-py39.txt
+-r publisher_subscriber/requirements-py39.txt

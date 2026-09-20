@@ -15,6 +15,8 @@ os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", ".9")
 from pathlib import Path
 import pickle
 
+import jax
+jax.config.update("jax_default_matmul_precision", "highest")
 import jax.numpy as jnp
 from jax import jit, vmap
 import matplotlib.colors as mcolors
@@ -35,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / "data"
 FIGURE_DIR = HERE.parents[0] / "figure"
 
-NX = 400
+NX = 800
 SEED = 0
 
 PARAMS_PKL = DATA_DIR / f"trained_pinn_h{NX}_seed{SEED}.pkl"
@@ -231,7 +233,14 @@ def main():
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    plot_slice_x3_multi([V1, V05, V0], x1g, x2g, x3g, ax=ax, method="FD PINN")
+    xx, yy = np.meshgrid(x1g, x2g, indexing="xy")
+    evaluator = make_v_func(v_single, params)
+    pinn_slices = []
+    for t in TIMES:
+        points = np.column_stack([np.full(xx.size, t), xx.ravel(), yy.ravel(),
+                                  np.full(xx.size, SLICE_X3)]).astype(np.float32)
+        pinn_slices.append(evaluator(points).reshape(xx.shape))
+    plot_slice_x3_multi(pinn_slices, x1g, x2g, x3g, ax=ax, method="FD PINN")
     plt.tight_layout()
     save_current_figure(SAVE_FDPINN_2D)
     plt.close(fig)
@@ -245,8 +254,7 @@ def main():
     plt.close(fig)
 
     titles = [r"BRS (FDM) $t=0$", r"BRS (FD PINN) $t=0$"]
-    k_idx = nearest_x3_idx(x3g, SLICE_X3)
-    datas = [v_fdm_ds[FDM_TIME_INDICES[-1]].T, V0[:, :, k_idx]]
+    datas = [v_fdm_ds[FDM_TIME_INDICES[-1]].T, pinn_slices[-1]]
     data_ref = datas[0]
     step = 0.01
     vmin_disp = np.floor(data_ref.min() / step) * step

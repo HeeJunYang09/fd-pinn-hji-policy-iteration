@@ -165,7 +165,7 @@ def make_policy_fn(v_single, lambda_1, delta):
         dv_dx2 = (v_x2p - v_x2m) / (2 * h)
 
         dv_dx = jnp.stack([dv_dx1, dv_dx2], axis=0)
-        grad_norm = jnp.linalg.norm(dv_dx)
+        grad_norm = jnp.linalg.norm(dv_dx) + 1e-10
         alpha_unclipped = -dv_dx / (2 * lambda_1)
         alpha = jnp.where(grad_norm <= 2 * lambda_1, alpha_unclipped, -dv_dx / grad_norm)
         beta = delta * dv_dx / grad_norm
@@ -184,7 +184,7 @@ def make_policy_fn(v_single, lambda_1, delta):
 #%%
 def train_value_and_update_policy_with_sample(
     N, sigma, v_single, pinn_loss, gen_policy_fn,
-    minnum_h=200, maxnum_h=2000, num_iters=100, num_epochs=500, lr=1e-3,
+    minnum_h=200, maxnum_h=2000, num_iters=100, num_epochs=1000, lr=1e-3,
     verbose=True, seed=42, delta=0.1, layer=(3, 64, 64, 1), v_fdm=None,
 ):
     """Alternating PI-PINN training: fit v(t,x) under a fixed policy, then update
@@ -237,7 +237,6 @@ def train_value_and_update_policy_with_sample(
         epoch_bar = tqdm(range(num_epochs), desc=f"Train (Iter {n})", leave=False)
         policy_fn = gen_policy_fn(params_current)
         iter_key = random.split(outer_key[1], 2)
-        loss_log = []
         for epoch in epoch_bar:
             if (epoch + 1) % (num_epochs // 10) == 0 or epoch < 1:
                 iter_key = random.split(iter_key[1], 2)
@@ -246,14 +245,6 @@ def train_value_and_update_policy_with_sample(
                 alpha_batch, beta_batch = policy_fn(data_tx, h)
 
             params, opt_state, loss = step(params, opt_state, data_tx, sigma, alpha_batch, beta_batch, tau, h, nu_h)
-            loss_log.append(loss)
-
-            if epoch >= 100:
-                past_loss = loss_log[epoch - 100]
-                rel_change = abs(loss - past_loss) / max(abs(past_loss), 1e-8)
-                if rel_change < 1e-6:
-                    break
-
             if verbose and epoch % 10 == 0:
                 epoch_bar.set_postfix(loss=f"{loss:.4e}")
 
@@ -281,18 +272,31 @@ def plot_value_function_at_t(t_val, v_vals, ax, x1, x2, levels=20):
     return cf
 
 
+def load_paper_reference(sigma_text):
+    """Load the Nx=800 reference on the 101x101 evaluation grid.
+
+    The file contains five snapshots cropped to [-1,1]^2 (401x401 nodes).
+    The full FDM solve uses [-2,2]^2, h=4/800, dt=1/80000 and nu=0.00625.
+    Arrays use xy indexing: axis 1 is x1 and axis 0 is x2.
+    """
+    path = DATA_DIR / f"fdm_reference_{sigma_text}.npy"
+    values = np.load(path)
+    if values.shape != (5, 401, 401):
+        raise ValueError(
+            f"{path.name}: expected an Nx=800 crop (5, 401, 401), "
+            f"got {values.shape}. Use the Nx=800 reference shipped with this example."
+        )
+    return values[:, ::4, ::4]
+
+
 def run_one_sigma(sigma, sigma_text):
-    # fdm_reference_{sigma_text}.npy was solved on a 1600^2-cell grid (tau=160000,
-    # nu=0.003125); downsample by `step` to match the training/eval grid below.
-    step = 8
     minnum_h = maxnum_h = 800  # matches the paper run: min_nu = max_nu = 1.25*4/800 = 0.00625
 
     lambda_1, lambda_2, lambda_3 = 0.1, 1, 0.1
     delta, epsilon = 0.1, 0.3
     x_goal1 = jnp.array([0.9, 0.9])
 
-    v_fdm = np.load(DATA_DIR / f"fdm_reference_{sigma_text}.npy")
-    v_fdm = v_fdm[:, ::step, ::step]
+    v_fdm = load_paper_reference(sigma_text)
 
     num_iters, num_epoch, N = 1000, 1000, 2000
     min_nu = 1.25 * (4 / minnum_h)
@@ -321,6 +325,24 @@ def run_one_sigma(sigma, sigma_text):
             f,
         )
 
+    plot_checkpoint(params, v_fdm, v_single, out_dir / f"{stem}.png")
+
+    x_range = np.arange(num_iters + 1)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.semilogy(x_range, l2_history)
+    ax.set_xlabel("Outer iteration")
+    ax.set_ylabel(r"Relative $L^2$-error")
+    ax.set_xlim([0, num_iters])
+    ax.set_ylim([10**-3, 10**3])
+    plt.tight_layout(h_pad=0.1)
+    plt.savefig(out_dir / f"{stem}_l2_history.png", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"[{sigma_text}] saved: {out_dir / stem}.pkl / .png")
+
+
+def plot_checkpoint(params, v_fdm, v_single, output_path):
+    """Plot the same five snapshots for a trained or released checkpoint."""
     test_num_x = 101
     x = jnp.linspace(-1, 1, test_num_x)
     x1, x2 = jnp.meshgrid(x, x, indexing="xy")
@@ -359,21 +381,8 @@ def run_one_sigma(sigma, sigma_text):
             axs[k][i].set_rasterized(True)
 
     plt.tight_layout(h_pad=0.1)
-    plt.savefig(out_dir / f"{stem}.png", bbox_inches="tight")
+    plt.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
-
-    x_range = np.arange(num_iters + 1)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.semilogy(x_range, l2_history)
-    ax.set_xlabel("Outer iteration")
-    ax.set_ylabel(r"Relative $L^2$-error")
-    ax.set_xlim([0, num_iters])
-    ax.set_ylim([10**-3, 10**3])
-    plt.tight_layout(h_pad=0.1)
-    plt.savefig(out_dir / f"{stem}_l2_history.png", bbox_inches="tight")
-    plt.close(fig)
-
-    print(f"[{sigma_text}] saved: {out_dir / stem}.pkl / .png")
 
 
 #%%

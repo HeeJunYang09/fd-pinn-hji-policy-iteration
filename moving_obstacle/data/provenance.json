@@ -1,0 +1,116 @@
+{
+  "paper": "Finite-Difference-Based PINN Policy Iteration for Degenerate Viscous Hamilton\u2013Jacobi\u2013Isaacs Equations",
+  "example": 1,
+  "figures": [
+    "Figure 1",
+    "Figure 6"
+  ],
+  "reference": {
+    "nx": 800,
+    "spatial_domain": [
+      -2,
+      2
+    ],
+    "h": 0.005,
+    "time_step": 1.25e-05,
+    "artificial_viscosity": 0.00625,
+    "saved_shape": [
+      5,
+      401,
+      401
+    ],
+    "boundary_condition": "homogeneous Neumann",
+    "dtype": "float64"
+  },
+  "evaluation": {
+    "times": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "table_time": 0.0,
+    "spatial_domain": [
+      -1,
+      1
+    ],
+    "grid_shape": [
+      101,
+      101
+    ],
+    "reference_stride": 4,
+    "meshgrid_indexing": "xy",
+    "transpose_reference": false,
+    "relative_l2": "norm(prediction-reference)/(norm(reference)+1e-8)"
+  },
+  "training": {
+    "network": [
+      3,
+      64,
+      64,
+      64,
+      64,
+      1
+    ],
+    "activation": "sine",
+    "policy_updates": 1000,
+    "epochs_per_update": 1000,
+    "interior_samples": 2000,
+    "seed": 42,
+    "sampling": "continuous uniform, restricted to keep all finite-difference stencil points inside the domain"
+  },
+  "cases": [
+    {
+      "sigma_tag": "sigma_00_00",
+      "figure": "moving_obstacle_main",
+      "checkpoint": {
+        "file": "trained_pinn_sigma_00_00.pkl",
+        "sha256": "2ffa74d1326caa98b128542b4f0e465169cf3bea6fef95867505e0d533e54af9"
+      },
+      "reference": {
+        "file": "fdm_reference_sigma_00_00.npy",
+        "sha256": "31524f85c409b3572c6da4b785a954cff96a5cce81b08d3b3046afd93bc33cca"
+      },
+      "expected_relative_l2": 0.0050886343233287334,
+      "sigma_diagonal": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "sigma_tag": "sigma_01_00",
+      "figure": "moving_obstacle_sigma_01_00",
+      "checkpoint": {
+        "file": "trained_pinn_sigma_01_00.pkl",
+        "sha256": "db11cb5dac2f7aada457acadc2f2c1f8ad7877e8ef4fc22a750a26dbc5025708"
+      },
+      "reference": {
+        "file": "fdm_reference_sigma_01_00.npy",
+        "sha256": "9e206eadbd8793b3d03497ba937510203e07b3ebe54dcae57bc62005b20c51af"
+      },
+      "expected_relative_l2": 0.00524791469797492,
+      "sigma_diagonal": [
+        0.1,
+        0.0
+      ]
+    },
+    {
+      "sigma_tag": "sigma_00_01",
+      "figure": "moving_obstacle_sigma_00_01",
+      "checkpoint": {
+        "file": "trained_pinn_sigma_00_01.pkl",
+        "sha256": "ed206bbe7103131bd63c162a50f74530044bebcd8d90ec26afb8a59f77f0ac52"
+      },
+      "reference": {
+        "file": "fdm_reference_sigma_00_01.npy",
+        "sha256": "fecf348effd3cecfe0c590a729b4b71775b626cdb135b2ae4351a9ef476ff853"
+      },
+      "expected_relative_l2": 0.0035540221724659204,
+      "sigma_diagonal": [
+        0.0,
+        0.1
+      ]
+    }
+  ]
+}

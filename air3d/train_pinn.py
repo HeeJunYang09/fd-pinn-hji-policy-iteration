@@ -1,5 +1,5 @@
 """Train the PI-PINN value function for the Air3D pursuit-evasion HJI equation
-against the FDM reference produced by `fdm_reference.py`.
+with continuous uniform collocation. FDM data are used only for evaluation.
 
 GPU selection: set the HJ_GPU_ID environment variable (defaults to "0"), e.g.
     HJ_GPU_ID=0 python train_pinn.py --seed 0
@@ -62,15 +62,14 @@ def count_params(params):
     return sum(w.size + b.size for w, b in params)
 
 
-def grid_sample(key, N, step, domain):
-    index = random.randint(key, (), 1, N - 1)
-    return domain[0] + index * step
+def uniform_sample(key, N, step, domain):
+    return random.uniform(key, (), minval=domain[0] + step, maxval=domain[1] - step)
 
 
-grid_sample = vmap(grid_sample, in_axes=(0, 0, 0, None))
+uniform_sample = vmap(uniform_sample, in_axes=(0, 0, 0, None))
 
 
-def sample_grid_collocation(N, key, Nx, nu_h, tau_h, domain_t=(0.0, 1.0), domain_x=(-1.5, 1.5), domain_psi=(-jnp.pi, jnp.pi)):
+def sample_collocation(N, key, Nx, nu_h, tau_h, domain_t=(0.0, 1.0), domain_x=(-1.5, 1.5), domain_psi=(-jnp.pi, jnp.pi)):
     keys = random.split(key, 6)
     tau_count = int(jnp.ceil((domain_t[1] - domain_t[0]) / tau_h))
 
@@ -86,10 +85,10 @@ def sample_grid_collocation(N, key, Nx, nu_h, tau_h, domain_t=(0.0, 1.0), domain
     x2_key = random.split(keys[4], N)
     x3_key = random.split(keys[5], N)
 
-    ts = grid_sample(t_key, tau_vector, tau_step, domain_t)
-    x1 = grid_sample(x1_key, h_vector, h_step, domain_x)
-    x2 = grid_sample(x2_key, h_vector, h_step, domain_x)
-    x3 = grid_sample(x3_key, h_vector, h_psi_step, domain_psi)
+    ts = uniform_sample(t_key, tau_vector, tau_step, domain_t)
+    x1 = uniform_sample(x1_key, h_vector, h_step, domain_x)
+    x2 = uniform_sample(x2_key, h_vector, h_step, domain_x)
+    x3 = uniform_sample(x3_key, h_vector, h_psi_step, domain_psi)
     return jnp.stack([ts, x1, x2, x3], axis=-1), tau_step[:, None], h_step[:, None], h_psi_step[:, None], nu_h_step[:, None]
 
 
@@ -233,7 +232,7 @@ def make_policy_fn(v_single):
 #%%
 def train_value_and_update_policy_with_sample(
     N, P, v_single, pinn_loss, gen_policy_fn,
-    NP=1000, num_iters=100, num_epochs=500, lr=1e-3, verbose=True, seed=42, layer=(4, 64, 64, 1), v_fdm=None,
+    NP=1000, num_iters=500, num_epochs=1000, lr=1e-3, verbose=True, seed=0, layer=(4, 64, 64, 64, 64, 1), v_fdm=None,
 ):
     def initial_sample_ball(key, radius=1.0, dim=1):
         normal = random.normal(key, shape=(dim,))
@@ -279,13 +278,12 @@ def train_value_and_update_policy_with_sample(
         epoch_bar = tqdm(range(num_epochs), desc=f"Train (Iter {n})", leave=False)
         policy_fn = gen_policy_fn(params_current, P["omega_bar"])
         iter_key = random.split(outer_key[1], 2)
-        loss_log = []
         for epoch in epoch_bar:
             if (epoch + 1) % (num_epochs // 10) == 0 or epoch < 1:
                 iter_key = random.split(iter_key[1], 2)
                 keys = random.split(iter_key[0], 3)
-                data_tx, tau, h, h_psi, nu_h = sample_grid_collocation(
-                    N, keys[0], Nx=P["Nx"], nu_h=P["nu_h"], tau_h=P["tau_h"], domain_x=P["domain_x"]
+                data_tx, tau, h, h_psi, nu_h = sample_collocation(
+                    N, keys[0], Nx=P["Nx"], nu_h=P["nu_h"], tau_h=P["tau_h"], domain_t=P["domain_t"], domain_x=P["domain_x"]
                 )
                 data_Px = sample_periodic_points(NP, keys[1], domain_t=P["domain_t"], domain_x=P["domain_x"])
                 omega_e_n_batch, omega_p_n_batch = policy_fn(data_tx, h, h_psi)
@@ -293,13 +291,6 @@ def train_value_and_update_policy_with_sample(
             params, opt_state, loss = step(
                 params, opt_state, data_tx, data_Px, P, omega_e_n_batch, omega_p_n_batch, tau, h, h_psi, nu_h
             )
-            loss_log.append(loss)
-
-            if epoch >= 100:
-                past_loss = loss_log[epoch - 100]
-                rel_change = abs(loss - past_loss) / max(abs(past_loss), 1e-8)
-                if rel_change < 1e-6:
-                    break
             if verbose and epoch % 10 == 0:
                 epoch_bar.set_postfix(loss=f"{loss:.4e}")
 
@@ -324,32 +315,20 @@ def plot_value_function_at_t(t_val, v_vals, ax, x1, x2, levels=20):
     return cf
 
 
-def run(seed):
-    Nx = 400  # matches FDM h_400 reference; used for both figures and PARAMS_PKL naming
-    step = 2
-    domain_t = [0.0, 1.0]
-    domain_x = [-3.0, 3.0]
-    lx = domain_x[1] - domain_x[0]
-
-    h_x = lx / Nx
-    nu_h = 5.5 * h_x
-    tau_h = min(h_x**2 / (3 * nu_h), nu_h / 17424)
+def run(seed, Nx=800, sigma_vec=(0.0, 0.0, 0.0), output_dir=None):
+    from settings import problem, data_suffix
+    P = problem(Nx, sigma_vec)
+    suffix = data_suffix(sigma_vec)
+    step = Nx // 200
+    beta = P["beta"]
+    nu_h, tau_h = P["nu_h"], P["tau_h"]
     tau_count = int(np.ceil(1.0 / tau_h))
-
-    sigma = jnp.zeros((3, 3))
-    ve, vp, omega_bar, beta = 0.5, 0.5, 1.5, 0.5
-
-    P = {
-        "sigma": sigma, "ve": ve, "vp": vp, "omega_bar": omega_bar, "beta": beta,
-        "h_x": h_x, "h_psi": 2 * jnp.pi / Nx, "nu_h": nu_h, "tau_h": tau_h, "Nx": Nx,
-        "domain_t": domain_t, "domain_x": domain_x, "periodic_weight": 100.0,
-    }
 
     v_single = gen_v_single(beta)
     pinn_loss = make_pinn_loss(v_single)
     gen_policy_fn = make_policy_fn(v_single)
 
-    v_fdm = np.load(DATA_DIR / f"fdm_reference_h{Nx}.npy")
+    v_fdm = np.load(DATA_DIR / f"fdm_reference_h{Nx}{suffix}.npy")
     v_fdm = v_fdm[:, ::step, ::step]
 
     num_iters, num_epoch, N, NP = 500, 1000, 4000, 1000
@@ -359,11 +338,14 @@ def run(seed):
         num_iters=num_iters, num_epochs=num_epoch, layer=[4, 64, 64, 64, 64, 1], v_fdm=v_fdm,
     )
 
-    out_dir = DATA_DIR
+    out_dir = Path(output_dir) if output_dir is not None else DATA_DIR.parent / "trained"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"trained_pinn_h{Nx}_seed{seed}"
+    stem = f"trained_pinn_h{Nx}{suffix}_seed{seed}"
     with open(out_dir / f"{stem}.pkl", "wb") as f:
-        pickle.dump({"params": params, "alpha_n": alpha_n, "beta_n": beta_n, "mse_history": mse_history, "l2_history": l2_history}, f)
+        pickle.dump({"params": params, "alpha_n": alpha_n, "beta_n": beta_n, "mse_history": mse_history, "l2_history": l2_history, "sigma": np.asarray(P["sigma"]),
+                     "training": {"seed": seed, "nx": Nx, "sampling": "continuous uniform",
+                                  "policy_updates": num_iters, "epochs_per_update": num_epoch},
+                     "monitoring_reference": f"fdm_reference_h{Nx}{suffix}.npy"}, f)
 
     test_num_x = 101
     x = jnp.linspace(-1.5, 1.5, test_num_x)
@@ -416,6 +398,9 @@ def run(seed):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--nx", type=int, choices=(200, 400, 800), default=800, help="Spatial grid size; figures use 800.")
     parser.add_argument("--seed", type=int, default=0, help="Training seed. The paper figure uses seed=0.")
+    parser.add_argument("--sigma", type=float, nargs=3, default=[0., 0., 0.], help="Diagonal diffusion: 0 0 0 or 0.03 0.05 0.")
+    parser.add_argument("--output-dir", type=Path, default=DATA_DIR.parent / "trained")
     args = parser.parse_args()
-    run(args.seed)
+    run(args.seed, args.nx, args.sigma, args.output_dir)

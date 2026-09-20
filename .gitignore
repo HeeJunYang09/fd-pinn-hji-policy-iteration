@@ -1,2 +1,17 @@
 __pycache__/
 *.pyc
+*.log
+*.tmp
+*.bak
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+*/data/errors.json
+moving_obstacle/reproduced/
+moving_obstacle/generated_reference/
+air3d/reproduced/
+air3d/trained/
+air3d/generated_reference/
+publisher_subscriber/reproduced/
+publisher_subscriber/trained/
+publisher_subscriber/generated_reference/

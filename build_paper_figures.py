@@ -1,11 +1,8 @@
-"""Assemble the 13 paper figures (PDF) from each subproblem's raw PNG output.
+"""Export the moving-obstacle and publisher-subscriber PNGs as borderless PDFs.
 
-Air3D's `air3d/make_figures.py` already writes PDFs directly into figure/, so
-this script only needs to rasterize->PDF the moving-obstacle and
-publisher-subscriber PNGs (same trick the original repo used: wrap the PNG in
-a borderless PDF page).
+Air3D figures are generated directly by air3d/make_figures.py.
 
-Run after generating the pngs (see README.md for the full pipeline):
+Usage:
     python build_paper_figures.py
 """
 

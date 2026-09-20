@@ -204,13 +204,12 @@ def eval_nn_partial_diag_slice(params, t_val, xg, N, tf=0.5, r=1.0):
 
 
 def ref_from_3d_fdm_partial_diag(V3, N):
-    """v_N(t, x0, s, ..., s) ~= NS * v_3D(t, x0, s, s), NS=(N-1)/2 -- the paper's
-    decomposition-based reference reused for all higher-dimensional slices."""
+    """Scale a stored (x0,s) slice or project a 3D block reference."""
     assert (N % 2 == 1) and (N >= 3)
     NS = (N - 1) // 2
     nx = V3.shape[0]
     idx = np.arange(nx)
-    A = V3[:, idx, idx]
+    A = V3 if V3.ndim == 2 else V3[:, idx, idx]
     return (NS * A).T
 
 
@@ -304,7 +303,7 @@ def train_value_and_update_policy_with_sample(Ni, P, minnum_h=200, maxnum_h=2000
 
 
 #%%
-def run(dim, sigma_val):
+def run(dim, sigma_val, seed=42, output_dir=None):
     Nx = 600  # matches the paper's FDM reference resolution (h=600)
     domain_x, domain_t = (-1.5, 1.5), (0.0, 0.5)
     Lx = domain_x[1] - domain_x[0]
@@ -317,7 +316,7 @@ def run(dim, sigma_val):
     P["sigma"] = sigma_alt(dim, val=sigma_val)
     sigma_tag = f"{int(round(sigma_val * 10)):02d}"  # 0.1 -> "01", 0.3 -> "03", 0.5 -> "05"
 
-    v_fdm = np.load(DATA_DIR / f"fdm_reference_3d_sigma{sigma_tag}.npy")
+    v_fdm = np.load(DATA_DIR / f"fdm_reference_slice_sigma{sigma_tag}.npy")
     minnum_h = maxnum_h = Nx
     nu_h = 6.0 * (Lx / Nx)
 
@@ -328,68 +327,34 @@ def run(dim, sigma_val):
     start_time = time.time()
     params, u_n, d_n, params_current, u_current, d_current, mse_history, l2_history = train_value_and_update_policy_with_sample(
         Ni, P, dim=dim, num_iters=num_iters, num_epochs=num_epoch, layer=[dim + 1, unit, unit, unit, 1],
-        v_fdm=v_fdm, minnum_h=minnum_h, maxnum_h=maxnum_h,
+        v_fdm=v_fdm, minnum_h=minnum_h, maxnum_h=maxnum_h, seed=seed,
     )
     first_leaf = tree_util.tree_leaves(params)[0]
     first_leaf.block_until_ready()
     train_time = time.time() - start_time
 
-    out_dir = DATA_DIR
+    out_dir = Path(output_dir) if output_dir is not None else DATA_DIR.parent / "trained"
     out_dir.mkdir(parents=True, exist_ok=True)
-    params_num = count_params(params)
-    print(f"dim={dim} N={Ni} iters={num_iters} epochs={num_epoch} params={params_num} nu_h={nu_h:.4f} train_time={train_time:.0f}s")
     stem = f"trained_pinn_{dim}d_sigma{sigma_tag}"
-    with open(out_dir / f"{stem}.pkl", "wb") as f:
-        pickle.dump(
-            {"params": params, "u_n": u_n, "d_n": d_n, "params_current": params_current,
-             "u_current": u_current, "d_current": d_current, "sigma": P["sigma"],
-             "train_time": train_time, "mse_history": mse_history, "l2_history": l2_history},
-            f,
-        )
-
-    ss = Nx // 6
-    xg = np.linspace(-0.5, 0.5, 2 * ss + 1)
-    nx = len(xg)
-    t_list = [0.00, 0.10, 0.20, 0.30, 0.40, 0.50]
-    V = v_fdm
-    assert V.shape[1] == nx, f"FDM nx={V.shape[1]} vs requested nx={nx} mismatch."
-
-    fig, axs = plt.subplots(3, 6, figsize=(28, 12))
-    for ti, tval in enumerate(t_list):
-        levels = 20
-        vN = eval_nn_partial_diag_slice(params, tval, xg, dim, tf=0.5, r=1.0)
-        vref = ref_from_3d_fdm_partial_diag(V[ti], dim)
-        m = error_metrics(vN, vref)
-
-        cf_PINN = axs[0][ti].contourf(xg, xg, vN, levels=levels)
-        axs[0][ti].set_title(r"$v_{NN}(t,x;\theta_N)$" + fr"at $t$={tval:.2f}")
-        fig.colorbar(cf_PINN, ax=axs[0][ti])
-        cf_FDM = axs[1][ti].contourf(xg, xg, vref, levels=levels)
-        axs[1][ti].set_title(fr"Ref $V(t,x)$ at $t$={tval:.2f}")
-        fig.colorbar(cf_FDM, ax=axs[1][ti])
-        if ti == 5:
-            levels = 0
-        cf_diff = axs[2][ti].contourf(xg, xg, abs(vN - vref), levels=levels, cmap="magma")
-        c_bar = fig.colorbar(cf_diff, ax=axs[2][ti])
-        if ti == 5:
-            cf_diff.set_clim(1e-20, 1e-4)
-            c_bar.ax.yaxis.get_offset_text().set_x(3.4)
-        axs[2][ti].text(0.5, -0.24, f"MSE: {m['mse']:.2e}\nRelative $L^2$-error: {m['rel_l2']:.2e}",
-                         transform=axs[2][ti].transAxes, ha="center", va="top", fontsize=16)
-        for k in range(3):
-            axs[k][ti].set_xticks([-0.5, -0.25, 0.0, 0.25, 0.5])
-            axs[k][ti].set_yticks([-0.5, -0.25, 0.0, 0.25, 0.5])
-            axs[k][ti].set_rasterized(True)
-
-    plt.tight_layout(h_pad=0.1)
-    plt.savefig(out_dir / f"{stem}.png", bbox_inches="tight")
-    plt.close(fig)
+    training = dict(dimension=dim, sigma=sigma_val, seed=seed, interior_samples=Ni,
+                    policy_updates=num_iters, epochs_per_update=num_epoch,
+                    network=[dim + 1, unit, unit, unit, 1], learning_rate=.001,
+                    h=Lx/Nx, nu_h=nu_h, tau_h=float(np.sqrt((Lx/Nx)/(1152*dim))),
+                    sampling="continuous uniform")
+    saved = dict(params=tree_util.tree_map(np.asarray, params),
+                 sigma=np.asarray(P["sigma"]), training=training, train_time=train_time)
+    with (out_dir / f"{stem}.pkl").open("wb") as stream:
+        pickle.dump(saved, stream, protocol=pickle.HIGHEST_PROTOCOL)
+    from plotting import plot_slices
+    plot_slices(params, v_fdm, dim, out_dir / f"{stem}.png")
     print(f"saved: {out_dir / stem}.pkl")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dim", type=int, required=True, help="Problem dimension: 3, 11, or 51 in the paper.")
-    parser.add_argument("--sigma-val", type=float, required=True, help="Diffusion magnitude: 0.1, 0.3, or 0.5 in the paper.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dim", type=int, choices=[3, 5, 11, 25, 51], required=True)
+    parser.add_argument("--sigma-val", type=float, choices=[.1, .3, .5], required=True)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--output-dir", type=Path, default=DATA_DIR.parent / "trained")
     args = parser.parse_args()
-    run(args.dim, args.sigma_val)
+    run(args.dim, args.sigma_val, args.seed, args.output_dir)
